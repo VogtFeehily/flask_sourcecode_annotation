@@ -446,6 +446,7 @@ class Flask(object):
     #
     # 注意: 这里的实例中的 app.add_url_rule('index', '/') 写错了
     # 正确的应该是 app.add_url_rule('/', 'index')
+    # TODO: 深入理解 werkzeug 中的 Rule 和 Map
     #
     ###############################################################################
     def add_url_rule(self, rule, endpoint, **options):
@@ -615,7 +616,7 @@ class Flask(object):
 
     ###############################################################################
     #
-    # 路由解析: role --> endpoint, 由 Werkzeug 完成
+    # 路由解析: rule --> endpoint, 由 Werkzeug 完成
     # 会抛出一些常见的 HTTPException, 比如 404, 405
     #
     ###############################################################################

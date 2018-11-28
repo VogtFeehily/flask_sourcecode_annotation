@@ -26,6 +26,13 @@ from werkzeug.contrib.securecookie import SecureCookie
 
 # try to load the best simplejson implementation available.  If JSON
 # is not installed, we add a failing class.
+###############################################################################
+# 
+# Flask-0.2 版本改动比较大的地方就是加入了 json api 支持
+# 关于 json 和 samplejson 的区别, 见 https://stackoverflow.com/questions/712791/
+# what-are-the-differences-between-json-and-simplejson-python-modules
+#
+###############################################################################
 json_available = True
 try:
     import simplejson as json
@@ -49,7 +56,19 @@ try:
 except (ImportError, AttributeError):
     pkg_resources = None
 
-
+###############################################################################
+#                               Request/Response
+# Request 和 Response 和 0.1 版本比较变化不是很大
+# Request 支持了 json api
+#     通过一个 property 属性获取包在 request body 中的 json 数据, 并且 load 成 dict并返回
+# `module` 属性
+#     详情见 Module 类
+# 注意: 
+# cached_property, 这是 werkzeug 实现的, 将属性值设置到实例的 __dict__ 中
+# 详情见源码: https://github.com/pallets/werkzeug/blob/c1990f366930ee29412803b9261ef01cc8815dca/werkzeug/utils.py#L35
+# 
+# TODO: 深入理解 werkzeug 中的 Request 和 Response
+###############################################################################
 class Request(RequestBase):
     """The request object used by default in flask.  Remembers the
     matched endpoint and view arguments.
@@ -98,13 +117,13 @@ class _RequestGlobals(object):
 # 在 0.2 中 Session 还是继续沿用 werkzeug 的 SecureCookie, 但是在此基础上包了一层
 # 0.2 版本中可以为 session 设置过期时间, 或者设置为不过期
 # 详情见 `open_session` 和 `save_session`
-# 这里为 session 设置了 property 属性, 设定义了是否将 session 设置为不过期
-# 设置 property 属性这里有点意思, 定义了两个方法, 用 property() 方法设置为 property 属性
+# 设置了 session 的 property 属性, 定义是否设置 session 为不过期
+# 这里有点意思, 定义了两个方法, 用 property() 方法设置为 property 属性
 # 的 getter 和 setter 之后, 又将这两个方法删除.
 # 至于为什么删除这两个方法, 我想大概是为了锁定设置和获取 property 属性的入口吧
 # 不允许通过其他方式(这两个方法)来设置和获取
 # 
-# 最新版本的 Flask 已经将这个地方改为装饰器方式设置 property 属性了:
+# 1.0 版本的 Flask 已经将这个地方改为装饰器方式设置 property 属性了:
 #         @property
 #         def permanent(self)
 #             return self.get('_permanent', False)
@@ -113,6 +132,7 @@ class _RequestGlobals(object):
 #         def permanent(self, value):
 #             self['_permanent'] = bool(value)
 # 
+# TODO: 深入理解 werkzeug 的 SecureCookie
 ###############################################################################
 class Session(SecureCookie):
     """Expands the session with support for switching between permanent
@@ -132,16 +152,27 @@ class Session(SecureCookie):
 ###############################################################################
 #                                 _NullSession
 # _NullSession 比较有意思, 大概是为了保持 session 中的一致性, 所以封装了这个
-# 大概的作用是在你调用的时候抛错告诉你: Hey, 哥们儿, 你没有设置 session
-# 详情见 :
-# _RequestContext.init -- 创建请求上下文的时候如果 session 不存在, 则设置一个 _NullSession, 
+# 作用是在你调用的时候抛错告诉你: 
+# Hey, 哥们儿, 你没有设置 session 的 secret_key, 就不可以使用 session
+# 
+# 创建请求上下文的时候如果发现未设置 session 的 secret_key
+# 则在全局变量 session 中设置一个 _NullSession, 在程序中如果调用到全局变量 session 就会报错
+# _RequestContext.init 代码片段:
+#         self.session = app.open_session(self.request)
 #         if self.session is None:
 #             self.session = _NullSession()
-# 和
-# process_response -- 创建 response 的时候不把 _NullSession 存入response
+# 
+#  open_session 代码片段:
+#         key = self.secret_key
+#         if key is not None:
+#             return Session.load_cookie(request, self.session_cookie_name,
+#                                        secret_key=key)
+# 
+# 创建 response 的时候不把 _NullSession 存入response
+# process_response:
 #         if not isinstance(ctx.session, _NullSession):
 #             self.save_session(ctx.session, response)
-# 
+#  
 ###############################################################################
 class _NullSession(Session):
     """Class used to generate nicer error messages if sessions are not
@@ -157,7 +188,16 @@ class _NullSession(Session):
         update = setdefault = _fail
     del _fail
 
-
+###############################################################################
+#  
+# 请求上下文, 和 0.1 版本相比, 将 0.1 中  match_request 这一步合并进来
+# 即在压请求栈的时候就解析路由 rule --> endpoint
+# 如果解析的时候报了任何 HTTPException 会被存进 Request 实例的 routing_exception 中
+# 
+# 所以在 dispatch_request 的时候优先检查 request 是否有 exception, 有的话先抛出
+# 再处理剩下的步骤, 剩下的步骤和 0.1 版本相比无变化
+#  
+###############################################################################
 class _RequestContext(object):
     """The request context contains all request relevant information.  It is
     created at the beginning of the request and pushed to the
