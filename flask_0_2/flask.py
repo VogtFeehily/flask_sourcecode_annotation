@@ -522,6 +522,28 @@ class _ModuleSetupState(object):
         self.url_prefix = url_prefix
 
 
+###############################################################################
+#                               Module
+# Blueprint 的前身, 该类的存在使得可以清晰地按照功能模块拆分 Flask 项目的项目结构
+# Module 类中的方法都是 `启动时` 执行(见 README)的方法
+# 开发者显式调用 Flask 主类的 `register_module`, 将拆分出来的模块绑定到 Flask 主类上
+# 
+# 将 Module 和 Flask 主类绑定的方式很有意思
+# 在绑定模块的实惠通过一个 '动态' 的 _ModuleSetupState 实例传入一些绑定所需的参数
+# 比如 app 和 url_prefix, 选择用一个实例来传入可能是考虑到有更好的扩展性吧
+# 详情见: Flask.register_module
+# 而且, 绑定的是一个方法, 真正的模块绑定是发生在 `register_module` 中运行绑定的方法的时候
+# 
+# Module 中的方法和 Flask 主类中差不多:
+#     1. 添加路由规则(可以定义路由前缀)
+#     2. 定义视图
+#     3. before_request(仅仅作用在该 Module 所定义的路由规则上)
+#     4. before_app_request(作用在所有的路由规则上)
+#     5. after_request(仅作用在该 Module 所定义的路由规则上)
+#     6. after_app_request(作用在所有的路由规则上)
+#     7. ...
+# 
+###############################################################################
 class Module(_PackageBoundObject):
     """Container object that enables pluggable applications.  A module can
     be used to organize larger applications.  They represent blueprints that,
@@ -654,7 +676,11 @@ class Module(_PackageBoundObject):
     def _record(self, func):
         self._register_events.append(func)
 
-
+###############################################################################
+#                                  Flask
+# 
+# 
+###############################################################################
 class Flask(_PackageBoundObject):
     """The flask object implements a WSGI application and acts as the central
     object.  It is passed the name of the module or package of the
@@ -1044,6 +1070,14 @@ class Flask(_PackageBoundObject):
             return f
         return decorator
 
+    ###############################################################################
+    #                    before_request/after_request
+    # 为了支持新增的 Module 层面的 before_request 和 after_request
+    # before_request_funcs 和 after_request_funcs 从 0.1 版本的列表变成了字典
+    # key 为 None/Module 的 name, value 为 funcs 列表
+    # None 影响的是所有的路由规则上, Module name 影响的是对应的 Module 下的所有路由规则
+    # 具体可见 preprocess_request 和 process_response
+    ###############################################################################
     def before_request(self, f):
         """Registers a function to run before each request."""
         self.before_request_funcs.setdefault(None, []).append(f)
@@ -1111,6 +1145,12 @@ class Flask(_PackageBoundObject):
             return self.response_class(*rv)
         return self.response_class.force_type(rv, request.environ)
 
+    ###############################################################################
+    #                   preprocess_request/process_response
+    # 这两个方法现在根据不同的路由规则所属的 Module 而执行不同的方法
+    # 如果一个路由规则 a 属于 Module alphabet, 那么 preprocess 和 process_response需要处理的
+    # 包括了字典 before_request_funcs 中键为 None 中定义的方法和键为 Module 名中定义的方法
+    ###############################################################################
     def preprocess_request(self):
         """Called before the actual request dispatching and will
         call every as :meth:`before_request` decorated function.

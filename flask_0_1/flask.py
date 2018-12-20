@@ -425,11 +425,11 @@ class Flask(object):
 
     ###############################################################################
     #                            添加路由规则
-    # 名词统一 > role: 路由规则(str)
+    # 名词统一 > rule: 路由规则(str)
     #           endpoint: 路由节点(str)
     #           view_function: 视图函数(function)
     #
-    # 路由解析顺序: role --1--> endpoint --2-->view_function
+    # 路由解析顺序: rule --1--> endpoint --2-->view_function
     # 第一步从路由规则到路由节点是由 Werkzeug 完成的, 第二步是由 Flask 完成的
     #
     # 在这里, Flask-0.1 没有对相同的路由节点进行处理, 仅仅是做覆盖
